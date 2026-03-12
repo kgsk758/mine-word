@@ -14,12 +14,12 @@ const DISTANCE_WEIGHT_POWER = 2; // w = 1 / (d^p + 1)
 export const generateGrid = async (size: number, mineCount: number): Promise<{ grid: CellData[][], mineWords: string[] }> => {
   const allWords = await fetchAllWords();
   
-  // Randomly select mine words
+  // 1. 地雷ワードの選定
   const shuffled = [...allWords].sort(() => 0.5 - Math.random());
   const selectedMineWords = shuffled.slice(0, mineCount);
   const mineEmbeddings = await Promise.all(selectedMineWords.map(word => fetchEmbedding(word)));
 
-  // Randomly place mines on the grid
+  // 2. 地雷の配置決定
   const minePositions: {x: number, y: number}[] = [];
   while (minePositions.length < mineCount) {
     const pos = {
@@ -31,59 +31,91 @@ export const generateGrid = async (size: number, mineCount: number): Promise<{ g
     }
   }
 
-  const grid: CellData[][] = [];
-  const cellPromises: Promise<CellData>[] = [];
+  // 3. 各マスのタスク定義（ベクトル計算まで）
+  interface CellTask {
+    x: number;
+    y: number;
+    isMine: boolean;
+    word?: string;
+    targetVector?: number[];
+  }
 
+  const tasks: CellTask[] = [];
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
       const isMineIndex = minePositions.findIndex(p => p.x === x && p.y === y);
       const isMine = isMineIndex !== -1;
       
-      const promise = (async () => {
-        let word = "";
-        if (isMine) {
-          word = selectedMineWords[isMineIndex];
-        } else {
-          // Calculate weighted vector
-          const targetVector = new Array(mineEmbeddings[0].length).fill(0);
-          let totalWeight = 0;
+      if (isMine) {
+        tasks.push({ x, y, isMine: true, word: selectedMineWords[isMineIndex] });
+      } else {
+        // 加重平均ベクトルの計算
+        const targetVector = new Array(mineEmbeddings[0].length).fill(0);
+        let totalWeight = 0;
 
-          minePositions.forEach((mPos, idx) => {
-            const dist = Math.sqrt(Math.pow(x - mPos.x, 2) + Math.pow(y - mPos.y, 2));
-            const weight = 1 / (Math.pow(dist, DISTANCE_WEIGHT_POWER) + 0.1);
-            
-            const emb = mineEmbeddings[idx];
-            for (let i = 0; i < targetVector.length; i++) {
-              targetVector[i] += emb[i] * weight;
-            }
-            totalWeight += weight;
-          });
-
-          // Normalize
+        minePositions.forEach((mPos, idx) => {
+          const dist = Math.sqrt(Math.pow(x - mPos.x, 2) + Math.pow(y - mPos.y, 2));
+          const weight = 1 / (Math.pow(dist, DISTANCE_WEIGHT_POWER) + 0.1);
+          
+          const emb = mineEmbeddings[idx];
           for (let i = 0; i < targetVector.length; i++) {
-            targetVector[i] /= totalWeight;
+            targetVector[i] += emb[i] * weight;
           }
+          totalWeight += weight;
+        });
 
-          // Search closest word
-          const results = await searchVector(targetVector, 10);
-          // Pick a word that is not one of the mine words
-          const filteredResults = results.filter(r => !selectedMineWords.includes(r.word));
-          word = filteredResults.length > 0 ? filteredResults[0].word : "unknown";
+        for (let i = 0; i < targetVector.length; i++) {
+          targetVector[i] /= totalWeight;
         }
-
-        return {
-          x, y, word, isMine, isRevealed: false, isFlagged: false
-        };
-      })();
-      
-      cellPromises.push(promise);
+        tasks.push({ x, y, isMine: false, targetVector });
+      }
     }
   }
 
-  const cells = await Promise.all(cellPromises);
-  
+  // 4. 非地雷マスの候補ワードを並列で一気に取得 (候補を多めに50個)
+  const nonMineTasks = tasks.filter(t => !t.isMine);
+  const searchResults = await Promise.all(
+    nonMineTasks.map(t => searchVector(t.targetVector!, size * size))
+  );
+
+  // 5. 重複を避けて単語を順次割り当て
+  const usedWords = new Set<string>(selectedMineWords); // 地雷ワードも重複禁止リストに入れる
+  const finalCells: CellData[] = [];
+  let searchResultIdx = 0;
+
+  for (const task of tasks) {
+    let word = "";
+    if (task.isMine) {
+      word = task.word!;
+    } else {
+      const candidates = searchResults[searchResultIdx++];
+      // まだ使われていない中で最も近い(スコアが高い)単語を探す
+      const bestChoice = candidates.find(c => !usedWords.has(c.word));
+      
+      if (bestChoice) {
+        word = bestChoice.word;
+      } else {
+        // 万が一候補が全て使われていた場合のフォールバック
+        // (50個あればまず発生しないが、安全のため)
+        word = `word-${task.x}-${task.y}`; 
+      }
+    }
+    
+    usedWords.add(word);
+    finalCells.push({
+      x: task.x,
+      y: task.y,
+      word,
+      isMine: task.isMine,
+      isRevealed: false,
+      isFlagged: false
+    });
+  }
+
+  // 6. グリッド形状に変換
+  const grid: CellData[][] = [];
   for (let y = 0; y < size; y++) {
-    grid[y] = cells.slice(y * size, (y + 1) * size);
+    grid[y] = finalCells.slice(y * size, (y + 1) * size);
   }
 
   return { grid, mineWords: selectedMineWords };
