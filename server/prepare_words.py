@@ -1,34 +1,53 @@
-import requests
+import pkgutil
+import importlib
+import sys
 import os
 
-def download_words():
-    # English Words
-    en_url = "https://raw.githubusercontent.com/first20hours/google-10000-english/master/google-10000-english-no-swears.txt"
-    print(f"Downloading English words...")
-    res_en = requests.get(en_url)
-    if res_en.status_code == 200:
-        words = [w for w in res_en.text.splitlines() if len(w) > 3][:5000]
-        with open("words_en.txt", "w", encoding="utf-8") as f:
-            for w in words: f.write(f"{w}\n")
-        print("Saved words_en.txt")
+# Add current directory to sys.path to allow imports from local packages
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-    # Japanese Words (Common nouns)
-    # 簡易的なリストですが、より大きなリストが必要な場合は適切なソースに差し替え可能です
-    ja_words = [
-        "りんご", "バナナ", "猫", "犬", "象", "花", "葡萄", "家", "氷", "ジュース",
-        "山", "海", "川", "太陽", "月", "星", "森", "砂漠", "雲", "雨",
-        "車", "電車", "飛行機", "自転車", "船", "本", "ペン", "コンピュータ", "電話", "テレビ",
-        "時計", "机", "椅子", "鞄", "靴", "眼鏡", "箸", "皿", "コップ", "鍵",
-        "学校", "病院", "公園", "銀行", "駅", "海", "空", "道", "橋", "店",
-        "パン", "ご飯", "肉", "魚", "野菜", "果物", "卵", "牛乳", "水", "お茶",
-        "赤", "青", "黄", "緑", "白", "黒", "金", "銀", "茶", "紫",
-        "朝", "昼", "夜", "春", "夏", "秋", "冬", "今日", "明日", "昨日",
-        "山登り", "散歩", "読書", "音楽", "映画", "料理", "旅行", "運動", "仕事", "勉強"
-    ]
-    # もし日本語のより大きなリストがあればここで取得
-    with open("words_ja.txt", "w", encoding="utf-8") as f:
-        for w in ja_words: f.write(f"{w}\n")
-    print("Saved words_ja.txt")
+from fetchers.base import WordProvider
+
+def download_words():
+    print("Starting word list generation...")
+    
+    # Import the fetchers package
+    try:
+        import fetchers
+    except ImportError as e:
+        print(f"Error: Could not import 'fetchers' package: {e}")
+        return
+
+    # Discover and run all providers
+    provider_count = 0
+    for loader, module_name, is_pkg in pkgutil.iter_modules(fetchers.__path__):
+        if module_name == 'base':
+            continue
+            
+        full_module_name = f'fetchers.{module_name}'
+        try:
+            module = importlib.import_module(full_module_name)
+            
+            # Look for classes that inherit from WordProvider
+            for attribute_name in dir(module):
+                attribute = getattr(module, attribute_name)
+                
+                if (isinstance(attribute, type) and 
+                    issubclass(attribute, WordProvider) and 
+                    attribute is not WordProvider):
+                    
+                    print(f"Running provider: {attribute_name} (from {module_name})")
+                    provider = attribute()
+                    provider.run()
+                    provider_count += 1
+                    
+        except Exception as e:
+            print(f"Error loading or running fetcher {full_module_name}: {e}")
+
+    if provider_count == 0:
+        print("No word providers found in 'fetchers' directory.")
+    else:
+        print(f"Completed word list generation using {provider_count} providers.")
 
 if __name__ == "__main__":
     download_words()

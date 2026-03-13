@@ -7,6 +7,7 @@ export interface CellData {
   isMine: boolean;
   isRevealed: boolean;
   isFlagged: boolean;
+  isExploded?: boolean;
 }
 
 const DISTANCE_WEIGHT_POWER = 2; // w = 1 / (d^p + 1)

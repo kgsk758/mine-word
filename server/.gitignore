@@ -2,3 +2,11 @@
 __pycache__/
 words_en.txt
 words_ja.txt
+word_datas/
+*.tsv
+*.Identifier
+
+# Word fetcher implementations
+fetchers/*.py
+!fetchers/__init__.py
+!fetchers/base.py

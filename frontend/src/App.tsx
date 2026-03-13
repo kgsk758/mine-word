@@ -12,7 +12,7 @@ type Language = 'en' | 'ja'
 
 const translations = {
   en: {
-    title: "Mine-Word",
+    title: "Mine Word",
     subtitle: "Infer mine positions based on word similarity.",
     reset: "Reset Game",
     mines: "Mine Words",
@@ -102,7 +102,9 @@ function App() {
       setEnlargedCell(null)
       return
     }
+
     if (gameOver || win || grid[y][x].isFlagged) return
+
     if (grid[y][x].isRevealed) {
       setEnlargedCell({ x, y })
       return
@@ -113,6 +115,7 @@ function App() {
     cell.isRevealed = true
 
     if (cell.isMine) {
+      cell.isExploded = true
       newGrid.forEach(row => row.forEach(c => c.isRevealed = true))
       setGameOver(true)
     } else {
@@ -156,7 +159,7 @@ function App() {
             {lang === 'en' ? '日本語' : 'English'}
           </button>
         </div>
-        <h1 className="text-3xl font-bold mb-1 text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500">
+        <h1 className="text-3xl font-bold mb-1 text-purple-500">
           {t.title}
         </h1>
         <p className="text-slate-400 text-sm">
@@ -185,6 +188,7 @@ function App() {
                     onContextMenu={(e) => handleContextMenu(e, x, y)}
                     isGameOver={gameOver}
                     isEnlarged={enlargedCell?.x === x && enlargedCell?.y === y}
+                    lang={lang}
                   />
                 ))
               )}
@@ -219,7 +223,7 @@ function App() {
           </div>
 
           {(gameOver || win) && (
-            <div className={`p-4 rounded-lg text-center font-bold text-xl ${win ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
+            <div className={`p-2 rounded-lg text-center font-bold text-xl ${win ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}`}>
               {win ? t.win : t.gameOver}
             </div>
           )}

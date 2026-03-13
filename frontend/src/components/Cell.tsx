@@ -14,17 +14,24 @@ interface CellProps {
   onContextMenu: (e: React.MouseEvent) => void;
   isGameOver: boolean;
   isEnlarged: boolean;
+  lang: 'en' | 'ja';
 }
 
-const Cell: React.FC<CellProps> = ({ data, onClick, onContextMenu, isGameOver, isEnlarged }) => {
+const Cell: React.FC<CellProps> = ({ data, onClick, onContextMenu, isGameOver, isEnlarged, lang }) => {
   const showWord = data.isRevealed || (isGameOver && data.isMine);
+  const isJa = lang === 'ja';
 
-  // 通常表示時のフォントサイズ
   const getBaseFontSize = (text: string) => {
     const len = text.length;
-    if (len <= 5) return '0.8rem';
-    if (len <= 8) return '0.7rem';
-    return '0.65rem';
+    if (isJa) {
+      if (len <= 3) return '0.85rem';
+      if (len <= 5) return '0.75rem';
+      return '0.65rem';
+    } else {
+      if (len <= 5) return '0.8rem';
+      if (len <= 8) return '0.7rem';
+      return '0.65rem';
+    }
   };
 
   return (
@@ -33,25 +40,31 @@ const Cell: React.FC<CellProps> = ({ data, onClick, onContextMenu, isGameOver, i
       onContextMenu={onContextMenu}
       className={cn(
         "relative w-full aspect-square flex items-center justify-center border border-slate-700 cursor-pointer transition-all duration-200 select-none",
-        data.isRevealed ? "bg-slate-800 text-slate-100" : "bg-slate-700 hover:bg-slate-600",
-        data.isRevealed && data.isMine && "bg-red-600 text-white",
-        isGameOver && data.isMine && !data.isRevealed && "bg-red-900/50 text-red-200",
-        isEnlarged && "z-50" // 拡大時はオーバーレイ(z-40)より上のz-50にする
+        // 背景色のロジック
+        !data.isMine && data.isRevealed && "bg-slate-800 text-slate-100",
+        !data.isRevealed && !isGameOver && "bg-slate-700 hover:bg-slate-600",
+        
+        // 地雷の背景色（踏んだか、それ以外か）
+        data.isMine && data.isExploded && "bg-red-600 text-white",
+        data.isMine && !data.isExploded && isGameOver && "bg-red-900/40 text-red-200/70",
+        
+        isEnlarged ? "z-[100]" : "z-0",
+        !isEnlarged && "overflow-hidden"
       )}
     >
       {showWord ? (
         <div 
           className={cn(
-            "w-full text-center px-0.5 font-bold", // transition-all を削除
+            "w-full text-center px-0.5 font-bold",
             isEnlarged 
-              ? "absolute min-w-max bg-slate-900 px-4 py-3 rounded-lg shadow-[0_0_20px_rgba(59,130,246,0.5)] border-2 border-blue-500 scale-125 z-[60]" 
-              : "truncate"
+              ? "absolute min-w-max bg-slate-900 px-5 py-4 rounded-xl border-2 border-blue-400 scale-125 z-[110] leading-tight" 
+              : cn(isJa ? "break-all line-clamp-2" : "truncate", "leading-[1.3] pb-0.5")
           )}
           style={{ 
-            fontSize: isEnlarged ? '1rem' : getBaseFontSize(data.word) 
+            fontSize: isEnlarged ? '1.1rem' : getBaseFontSize(data.word) 
           }}
         >
-          {data.isMine && <Bomb size={isEnlarged ? 14 : 10} className="mx-auto mb-0.5" />}
+          {data.isMine && <Bomb size={isEnlarged ? 16 : 10} className="mx-auto mb-0.5" />}
           {data.word}
         </div>
       ) : (
