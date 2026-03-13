@@ -11,8 +11,8 @@ export interface CellData {
 
 const DISTANCE_WEIGHT_POWER = 2; // w = 1 / (d^p + 1)
 
-export const generateGrid = async (size: number, mineCount: number): Promise<{ grid: CellData[][], mineWords: string[] }> => {
-  const allWords = await fetchAllWords();
+export const generateGrid = async (size: number, mineCount: number, lang: string = 'en'): Promise<{ grid: CellData[][], mineWords: string[] }> => {
+  const allWords = await fetchAllWords(lang);
   
   // 1. 地雷ワードの選定
   const shuffled = [...allWords].sort(() => 0.5 - Math.random());
@@ -31,7 +31,7 @@ export const generateGrid = async (size: number, mineCount: number): Promise<{ g
     }
   }
 
-  // 3. 各マスのタスク定義（ベクトル計算まで）
+  // 3. 各マスのタスク定義
   interface CellTask {
     x: number;
     y: number;
@@ -49,7 +49,6 @@ export const generateGrid = async (size: number, mineCount: number): Promise<{ g
       if (isMine) {
         tasks.push({ x, y, isMine: true, word: selectedMineWords[isMineIndex] });
       } else {
-        // 加重平均ベクトルの計算
         const targetVector = new Array(mineEmbeddings[0].length).fill(0);
         let totalWeight = 0;
 
@@ -72,14 +71,14 @@ export const generateGrid = async (size: number, mineCount: number): Promise<{ g
     }
   }
 
-  // 4. 非地雷マスの候補ワードを並列で一気に取得 (候補を多めに50個)
+  // 4. 非地雷マスの候補ワードを並列取得 (langを渡す)
   const nonMineTasks = tasks.filter(t => !t.isMine);
   const searchResults = await Promise.all(
-    nonMineTasks.map(t => searchVector(t.targetVector!, size * size))
+    nonMineTasks.map(t => searchVector(t.targetVector!, lang, size * size))
   );
 
   // 5. 重複を避けて単語を順次割り当て
-  const usedWords = new Set<string>(selectedMineWords); // 地雷ワードも重複禁止リストに入れる
+  const usedWords = new Set<string>(selectedMineWords);
   const finalCells: CellData[] = [];
   let searchResultIdx = 0;
 
@@ -89,16 +88,8 @@ export const generateGrid = async (size: number, mineCount: number): Promise<{ g
       word = task.word!;
     } else {
       const candidates = searchResults[searchResultIdx++];
-      // まだ使われていない中で最も近い(スコアが高い)単語を探す
       const bestChoice = candidates.find(c => !usedWords.has(c.word));
-      
-      if (bestChoice) {
-        word = bestChoice.word;
-      } else {
-        // 万が一候補が全て使われていた場合のフォールバック
-        // (50個あればまず発生しないが、安全のため)
-        word = `word-${task.x}-${task.y}`; 
-      }
+      word = bestChoice ? bestChoice.word : `word-${task.x}-${task.y}`;
     }
     
     usedWords.add(word);
@@ -112,7 +103,6 @@ export const generateGrid = async (size: number, mineCount: number): Promise<{ g
     });
   }
 
-  // 6. グリッド形状に変換
   const grid: CellData[][] = [];
   for (let y = 0; y < size; y++) {
     grid[y] = finalCells.slice(y * size, (y + 1) * size);

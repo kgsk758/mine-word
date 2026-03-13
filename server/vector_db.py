@@ -2,71 +2,72 @@ import numpy as np
 import faiss
 from sentence_transformers import SentenceTransformer
 import os
-import pickle
 
 class VectorDB:
-    def __init__(self, model_name='paraphrase-multilingual-MiniLM-L12-v2', word_list_path='words.txt'):
+    def __init__(self, model_name='paraphrase-multilingual-MiniLM-L12-v2'):
+        print(f"Loading model {model_name}...")
         self.model = SentenceTransformer(model_name)
-        self.word_list = []
-        self.index = None
-        self.embeddings = None
+        self.data = {
+            'en': {'words': [], 'index': None},
+            'ja': {'words': [], 'index': None}
+        }
         
-        # Load or create words
-        if os.path.exists(word_list_path):
-            with open(word_list_path, 'r', encoding='utf-8') as f:
-                self.word_list = [line.strip() for line in f if line.strip()]
-        else:
-            # Default word list for demonstration
-            self.word_list = [
-                "apple", "banana", "cat", "dog", "elephant", "flower", "grape", "house", "ice", "juice",
-                "りんご", "バナナ", "猫", "犬", "象", "花", "葡萄", "家", "氷", "ジュース",
-                "mountain", "ocean", "river", "sun", "moon", "star", "forest", "desert", "cloud", "rain",
-                "山", "海", "川", "太陽", "月", "星", "森", "砂漠", "雲", "雨",
-                "car", "train", "plane", "bicycle", "ship", "book", "pen", "computer", "phone", "television",
-                "車", "電車", "飛行機", "自転車", "船", "本", "ペン", "コンピュータ", "電話", "テレビ"
-            ]
-            with open(word_list_path, 'w', encoding='utf-8') as f:
-                for w in self.word_list:
-                    f.write(f"{w}\n")
+        self.load_language('en', 'words_en.txt')
+        self.load_language('ja', 'words_ja.txt')
 
-        self.build_index()
+    def load_language(self, lang, file_path):
+        if not os.path.exists(file_path):
+            print(f"Warning: {file_path} not found. Skipping {lang}.")
+            return
 
-    def build_index(self):
-        print("Building index...")
-        self.embeddings = self.model.encode(self.word_list, show_progress_bar=True)
-        self.embeddings = self.embeddings.astype('float32')
+        with open(file_path, 'r', encoding='utf-8') as f:
+            words = [line.strip() for line in f if line.strip()]
         
-        # Normalize for cosine similarity
-        faiss.normalize_L2(self.embeddings)
-        
-        dimension = self.embeddings.shape[1]
-        self.index = faiss.IndexFlatIP(dimension)  # Inner Product (Cosine similarity when normalized)
-        self.index.add(self.embeddings)
-        print(f"Index built with {len(self.word_list)} words.")
+        if not words:
+            return
 
-    def search(self, vector, k=5):
+        print(f"Building index for {lang} ({len(words)} words)...")
+        embeddings = self.model.encode(words, show_progress_bar=False).astype('float32')
+        faiss.normalize_L2(embeddings)
+        
+        dimension = embeddings.shape[1]
+        index = faiss.IndexFlatIP(dimension)
+        index.add(embeddings)
+        
+        self.data[lang] = {
+            'words': words,
+            'index': index
+        }
+        print(f"Index for {lang} built.")
+
+    def search(self, vector, lang='en', k=5):
+        if lang not in self.data or self.data[lang]['index'] is None:
+            # フォールバック
+            lang = 'en' if self.data['en']['index'] is not None else 'ja'
+            
+        index = self.data[lang]['index']
+        words = self.data[lang]['words']
+        
+        if index is None:
+            return []
+
         vector = np.array(vector).astype('float32').reshape(1, -1)
         faiss.normalize_L2(vector)
-        distances, indices = self.index.search(vector, k)
+        distances, indices = index.search(vector, k)
         
         results = []
         for dist, idx in zip(distances[0], indices[0]):
-            if idx < len(self.word_list):
+            if 0 <= idx < len(words):
                 results.append({
-                    "word": self.word_list[idx],
+                    "word": words[idx],
                     "score": float(dist)
                 })
         return results
 
     def get_word_embedding(self, word):
-        emb = self.model.encode([word])[0]
-        return emb.tolist()
+        return self.model.encode([word])[0].tolist()
 
-    def get_all_words(self):
-        return self.word_list
-
-if __name__ == "__main__":
-    db = VectorDB()
-    # Test search
-    test_vec = db.get_word_embedding("fruit")
-    print("Search results for 'fruit':", db.search(test_vec))
+    def get_all_words(self, lang='en'):
+        if lang in self.data and self.data[lang]['words']:
+            return self.data[lang]['words']
+        return self.data['en']['words'] if self.data['en']['words'] else self.data['ja']['words']

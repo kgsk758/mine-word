@@ -1,6 +1,6 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel
-from typing import List, Dict
+from typing import List, Dict, Optional
 from vector_db import VectorDB
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -15,16 +15,16 @@ app.add_middleware(
 )
 
 # Initialize vector database
-# Loading in a global variable for simplicity in this demo
 db = VectorDB()
 
 class SearchRequest(BaseModel):
     vector: List[float]
     k: int = 5
+    lang: str = "en"
 
 @app.get("/api/words")
-def get_words():
-    return db.get_all_words()
+def get_words(lang: str = Query("en")):
+    return db.get_all_words(lang)
 
 @app.get("/api/embedding/{word}")
 def get_embedding(word: str):
@@ -36,7 +36,7 @@ def get_embedding(word: str):
 @app.post("/api/search")
 def search_vector(request: SearchRequest):
     try:
-        results = db.search(request.vector, request.k)
+        results = db.search(request.vector, request.lang, request.k)
         return {"results": results}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

@@ -1,2 +1,4 @@
 .venv/
 __pycache__/
+words_en.txt
+words_ja.txt
