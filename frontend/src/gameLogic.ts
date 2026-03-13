@@ -10,7 +10,7 @@ export interface CellData {
   isExploded?: boolean;
 }
 
-const DISTANCE_WEIGHT_POWER = 2; // w = 1 / (d^p + 1)
+const DISTANCE_WEIGHT_POWER = 1; // w = 1 / (d^p + 1)
 
 export const generateGrid = async (size: number, mineCount: number, lang: string = 'en'): Promise<{ grid: CellData[][], mineWords: string[] }> => {
   const allWords = await fetchAllWords(lang);
@@ -55,7 +55,7 @@ export const generateGrid = async (size: number, mineCount: number, lang: string
 
         minePositions.forEach((mPos, idx) => {
           const dist = Math.sqrt(Math.pow(x - mPos.x, 2) + Math.pow(y - mPos.y, 2));
-          const weight = 1 / (Math.pow(dist, DISTANCE_WEIGHT_POWER) + 0.1);
+          const weight = 1 / (Math.pow(dist, DISTANCE_WEIGHT_POWER) + 0.00001);
           
           const emb = mineEmbeddings[idx];
           for (let i = 0; i < targetVector.length; i++) {
@@ -77,7 +77,7 @@ export const generateGrid = async (size: number, mineCount: number, lang: string
   const searchResults = await Promise.all(
     nonMineTasks.map(t => searchVector(t.targetVector!, lang, size * size))
   );
-
+  console.log(searchResults)
   // 5. 重複を避けて単語を順次割り当て
   const usedWords = new Set<string>(selectedMineWords);
   const finalCells: CellData[] = [];
