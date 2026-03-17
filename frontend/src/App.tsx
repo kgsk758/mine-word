@@ -29,7 +29,7 @@ const translations = {
     generating: "Generating Grid..."
   },
   ja: {
-    title: "マインワード",
+    title: "Mine Word",
     subtitle: "単語の意味の近さから地雷の位置を推測してください",
     reset: "リセット",
     mines: "地雷ワード",
